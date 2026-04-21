@@ -1,0 +1,61 @@
+# Checkpoints & model weights
+checkpoints/
+*.pt
+*.pth
+*.ckpt
+*.bin
+*.safetensors
+
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+*.egg-info/
+.eggs/
+dist/
+build/
+*.egg
+.Python
+
+# Virtual environments
+venv/
+env/
+.venv/
+.env
+
+# Jupyter Notebook
+.ipynb_checkpoints/
+*.ipynb_checkpoints
+
+# Data (large files)
+data/processed/
+*.csv
+*.parquet
+*.h5
+*.hdf5
+
+# Results & reports (optional - comment out if you want to track)
+# results/
+# *.docx
+# *.pdf
+
+# OS
+.DS_Store
+Thumbs.db
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Logs
+*.log
+logs/
+wandb/
+runs/
+
+# Environment variables
+.env
+.env.local
+secrets.json
