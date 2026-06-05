@@ -26,7 +26,7 @@ sys.path.insert(0, str(Path(__file__).parent))
 from config import (
     EMBED_DIM, LIGHTGCN_LAYERS, LEARNING_RATE, WEIGHT_DECAY,
     NUM_EPOCHS, PATIENCE, FEATURE_CONFIGS, SEEDS,
-    LIGHTGCL_SVD_Q, KAR_N_EXPERTS,
+    LIGHTGCL_SVD_Q, KAR_N_EXPERTS, DATASET_CONFIGS,
 )
 from data.dataset import InteractionData
 from features.loader import FeatureLoader
@@ -130,6 +130,8 @@ def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--model", type=str, required=True,
                         choices=["bpr_mf", "lightgcn", "lightgcn_sf", "xsimgcl", "simgcl", "lightgcl", "kar", "sasrec"])
+    parser.add_argument("--dataset", type=str, default="ml20m", choices=list(DATASET_CONFIGS.keys()),
+                        help="Dataset to use (default: ml20m)")
     parser.add_argument("--features",  type=str, default="none", choices=list(FEATURE_CONFIGS.keys()))
     parser.add_argument("--injection", type=str, default="none",
                         choices=["none", "input", "ffn", "output", "input+ffn", "input+output", "ffn+output", "all"],
@@ -156,22 +158,27 @@ def main():
     else:
         device = args.device
 
+    # Resolve dataset paths
+    ds_cfg = DATASET_CONFIGS[args.dataset]
+    data_dir      = ds_cfg["data_dir"]
+    embedding_dir = ds_cfg["embedding_dir"]
+
     if args.model in SEQ_MODELS:
-        experiment_name = f"{args.model}__{args.injection}__{args.features}__seed{args.seed}"
+        experiment_name = f"{args.model}__{args.dataset}__{args.injection}__{args.features}__seed{args.seed}"
     else:
-        experiment_name = f"{args.model}__{args.features}__seed{args.seed}"
+        experiment_name = f"{args.model}__{args.dataset}__{args.features}__seed{args.seed}"
     logger.info(f"═══ Experiment: {experiment_name} ═══")
-    logger.info(f"Device: {device}")
+    logger.info(f"Device: {device} | Dataset: {args.dataset}")
 
     set_seed(args.seed)
 
     # Load data
-    logger.info("Loading interaction data...")
-    data = InteractionData()
+    logger.info(f"Loading interaction data from {data_dir}...")
+    data = InteractionData(data_dir=data_dir)
 
     # Load features
     feature_names = FEATURE_CONFIGS[args.features]
-    feature_loader = FeatureLoader()
+    feature_loader = FeatureLoader(data_dir=data_dir, embedding_dir=embedding_dir)
     feature_dim = feature_loader.get_feature_dim(feature_names) if feature_names else 0
     logger.info(f"Features: {args.features} → {feature_names} (dim={feature_dim})")
 

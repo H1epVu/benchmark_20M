@@ -38,6 +38,29 @@ DATA_DIR = PROJECT_ROOT / "data" / "processed"
 RESULTS_DIR = PROJECT_ROOT / "results"
 CHECKPOINT_DIR = PROJECT_ROOT / "checkpoints"
 
+# Multi-dataset support for Direction 4 density ablation
+# Each dataset needs its own data/processed/ folder.
+# ML-20M variants share the same embedding (same movie universe, subsampled).
+# Amazon-Books requires a separate embedding directory.
+DATASET_CONFIGS = {
+    "ml20m": {
+        "data_dir":      PROJECT_ROOT / "data" / "processed",
+        "embedding_dir": EMBEDDING_DIR,
+    },
+    "sub_ml20m": {
+        "data_dir":      PROJECT_ROOT / "data" / "sub_ml20m",
+        "embedding_dir": EMBEDDING_DIR,          # same movies, just subsampled users
+    },
+    "ml1m": {
+        "data_dir":      PROJECT_ROOT / "data" / "ml1m",
+        "embedding_dir": EMBEDDING_DIR,          # same movies
+    },
+    "amazon": {
+        "data_dir":      PROJECT_ROOT / "data" / "amazon",
+        "embedding_dir": EMBEDDING_DIR.parent / "amazon",  # separate embeddings
+    },
+}
+
 # ──────────────────────────────────────────────────────────────────────────────
 # DATA PREPROCESSING
 # ──────────────────────────────────────────────────────────────────────────────
