@@ -194,6 +194,7 @@ def train_model(
 
     for epoch in range(start_epoch, num_epochs + 1):
         epoch_wall_t0 = time.time()
+        logger.info(f"Epoch {epoch:3d}/{num_epochs} starting...")
 
         t0 = time.time()
         train_loss = train_epoch(model, loader, optimizer, weight_decay, device)
@@ -351,6 +352,7 @@ def train_seq_model(
 
     for epoch in range(start_epoch, num_epochs + 1):
         epoch_wall_t0 = time.time()
+        logger.info(f"Epoch {epoch:3d}/{num_epochs} starting...")
 
         t0         = time.time()
         train_loss = train_epoch_seq(model, loader, optimizer, weight_decay, device, scaler)
