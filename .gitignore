@@ -34,8 +34,8 @@ data/processed/
 *.h5
 *.hdf5
 
-# Results & reports (optional - comment out if you want to track)
-# results/
+# Results & reports
+results/
 # *.docx
 # *.pdf
 
