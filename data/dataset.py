@@ -236,5 +236,6 @@ def get_seq_train_loader(
         shuffle=True,
         num_workers=4,
         pin_memory=True,
+        persistent_workers=True,
         drop_last=False,
     )

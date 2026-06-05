@@ -140,6 +140,8 @@ def main():
     parser.add_argument("--epochs",    type=int, default=NUM_EPOCHS)
     parser.add_argument("--seq-batch-size", type=int, default=512,
                         help="Batch size for sequential models (tune to fit VRAM)")
+    parser.add_argument("--no-amp", action="store_true",
+                        help="Disable mixed precision (AMP) — enabled by default on CUDA")
     parser.add_argument("--device",    type=str, default="auto")
     args = parser.parse_args()
 
@@ -208,6 +210,7 @@ def main():
             patience=PATIENCE,
             experiment_name=experiment_name,
             batch_size=args.seq_batch_size,
+            use_amp=not args.no_amp,
         )
     else:
         results = train_model(

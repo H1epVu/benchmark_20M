@@ -50,28 +50,36 @@ def _eta_str(epoch: int, num_epochs: int, epoch_times: list) -> str:
     return f" | ETA: {_fmt_duration(avg * remaining)}"
 
 
-def train_epoch_seq(model, loader, optimizer, weight_decay, device):
+def train_epoch_seq(model, loader, optimizer, weight_decay, device, scaler=None):
     """
     Train one epoch for sequential models (SASRec / BERT4Rec / DuoRec).
     Loader yields (seq_padded, target_item, neg_item) from SequenceDataset.
+    Pass scaler (torch.cuda.amp.GradScaler) to enable mixed-precision training.
     """
     model.train()
     total_loss = 0.0
     n_batches  = 0
+    use_amp = scaler is not None
 
     for sequences, pos_items, neg_items in loader:
-        sequences = sequences.to(device)
-        pos_items = pos_items.to(device)
-        neg_items = neg_items.to(device)
+        sequences = sequences.to(device, non_blocking=True)
+        pos_items = pos_items.to(device, non_blocking=True)
+        neg_items = neg_items.to(device, non_blocking=True)
 
-        pos_scores, neg_scores, reg_loss = model(
-            users=None, pos_items=pos_items, neg_items=neg_items, sequences=sequences
-        )
-        loss = bpr_loss(pos_scores, neg_scores) + weight_decay * reg_loss
+        with torch.autocast(device_type="cuda", enabled=use_amp):
+            pos_scores, neg_scores, reg_loss = model(
+                users=None, pos_items=pos_items, neg_items=neg_items, sequences=sequences
+            )
+            loss = bpr_loss(pos_scores, neg_scores) + weight_decay * reg_loss
 
         optimizer.zero_grad()
-        loss.backward()
-        optimizer.step()
+        if use_amp:
+            scaler.scale(loss).backward()
+            scaler.step(optimizer)
+            scaler.update()
+        else:
+            loss.backward()
+            optimizer.step()
 
         total_loss += loss.item()
         n_batches  += 1
@@ -296,6 +304,7 @@ def train_seq_model(
     resume: bool = True,
     max_seq_len: int = 50,
     batch_size: int = 512,
+    use_amp: bool = True,
 ) -> Dict:
     """
     Full training loop for sequential models (SASRec / BERT4Rec / DuoRec).
@@ -308,6 +317,11 @@ def train_seq_model(
     model = model.to(device)
     optimizer = torch.optim.Adam(model.parameters(), lr=lr, weight_decay=0)
     loader = get_seq_train_loader(interaction_data, max_seq_len=max_seq_len, batch_size=batch_size)
+
+    use_amp = use_amp and device == "cuda"
+    scaler = torch.cuda.amp.GradScaler() if use_amp else None
+    if use_amp:
+        logger.info("Mixed precision (AMP) enabled")
 
     best_ndcg       = 0.0
     best_metrics    = {}
@@ -339,7 +353,7 @@ def train_seq_model(
         epoch_wall_t0 = time.time()
 
         t0         = time.time()
-        train_loss = train_epoch_seq(model, loader, optimizer, weight_decay, device)
+        train_loss = train_epoch_seq(model, loader, optimizer, weight_decay, device, scaler)
         train_time = time.time() - t0
 
         log_entry = {"epoch": epoch, "train_loss": train_loss, "train_time": train_time}
