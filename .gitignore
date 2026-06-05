@@ -36,6 +36,9 @@ data/processed/
 
 # Results & reports
 results/
+
+# External third-party code
+external/
 # *.docx
 # *.pdf
 
