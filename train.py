@@ -14,7 +14,6 @@ import torch
 import torch.nn.functional as F
 import numpy as np
 from pathlib import Path
-from datetime import datetime
 from typing import Dict, Optional
 
 import sys
@@ -32,6 +31,23 @@ logger = logging.getLogger(__name__)
 def bpr_loss(pos_scores, neg_scores):
     """BPR loss: -log(sigmoid(pos - neg))."""
     return -F.logsigmoid(pos_scores - neg_scores).mean()
+
+
+def _fmt_duration(seconds: float) -> str:
+    s = int(seconds)
+    if s >= 3600:
+        return f"{s // 3600}h {(s % 3600) // 60}m"
+    elif s >= 60:
+        return f"{s // 60}m {s % 60}s"
+    return f"{s}s"
+
+
+def _eta_str(epoch: int, num_epochs: int, epoch_times: list) -> str:
+    remaining = num_epochs - epoch
+    if remaining <= 0 or not epoch_times:
+        return ""
+    avg = np.mean(epoch_times[-5:])  # rolling average last 5 epochs
+    return f" | ETA: {_fmt_duration(avg * remaining)}"
 
 
 def train_epoch_seq(model, loader, optimizer, weight_decay, device):
@@ -146,6 +162,7 @@ def train_model(
     best_epoch = 0
     patience_counter = 0
     history = []
+    epoch_times = []
     start_epoch = 1
 
     checkpoint_dir = CHECKPOINT_DIR / experiment_name
@@ -168,9 +185,7 @@ def train_model(
         logger.info(f"Training {experiment_name}: epochs {start_epoch}-{num_epochs}, lr={lr}, wd={weight_decay}")
 
     for epoch in range(start_epoch, num_epochs + 1):
-        # Log epoch start
-        epoch_start_time = datetime.now().strftime("%H:%M:%S")
-        logger.info(f"[{epoch_start_time}] Epoch {epoch:3d}/{num_epochs} starting...")
+        epoch_wall_t0 = time.time()
 
         t0 = time.time()
         train_loss = train_epoch(model, loader, optimizer, weight_decay, device)
@@ -188,13 +203,14 @@ def train_model(
             log_entry.update(val_metrics)
             log_entry["eval_time"] = eval_time
 
-            epoch_end_time = datetime.now().strftime("%H:%M:%S")
+            epoch_times.append(time.time() - epoch_wall_t0)
+            eta = _eta_str(epoch, num_epochs, epoch_times)
             logger.info(
-                f"[{epoch_end_time}] Epoch {epoch:3d}/{num_epochs} done | "
+                f"Epoch {epoch:3d}/{num_epochs} | "
                 f"Loss: {train_loss:.4f} | "
                 f"NDCG@10: {ndcg10:.4f} | "
                 f"Recall@20: {val_metrics.get('Recall@20', 0):.4f} | "
-                f"Time: {train_time:.1f}s train + {eval_time:.1f}s eval"
+                f"Train: {train_time:.1f}s | Eval: {eval_time:.1f}s{eta}"
             )
 
             if ndcg10 > best_ndcg:
@@ -214,11 +230,12 @@ def train_model(
                                          best_ndcg, best_metrics, best_epoch, patience_counter, history)
                     break
         else:
-            epoch_end_time = datetime.now().strftime("%H:%M:%S")
+            epoch_times.append(time.time() - epoch_wall_t0)
+            eta = _eta_str(epoch, num_epochs, epoch_times)
             logger.info(
-                f"[{epoch_end_time}] Epoch {epoch:3d}/{num_epochs} done | "
+                f"Epoch {epoch:3d}/{num_epochs} | "
                 f"Loss: {train_loss:.4f} | "
-                f"Time: {train_time:.1f}s train (no eval)"
+                f"Train: {train_time:.1f}s{eta}"
             )
 
         history.append(log_entry)
@@ -297,6 +314,7 @@ def train_seq_model(
     best_epoch      = 0
     patience_counter = 0
     history         = []
+    epoch_times     = []
     start_epoch     = 1
 
     checkpoint_dir = CHECKPOINT_DIR / experiment_name
@@ -318,8 +336,7 @@ def train_seq_model(
         logger.info(f"Training (seq) {experiment_name}: epochs {start_epoch}-{num_epochs}, lr={lr}")
 
     for epoch in range(start_epoch, num_epochs + 1):
-        epoch_start = datetime.now().strftime("%H:%M:%S")
-        logger.info(f"[{epoch_start}] Epoch {epoch:3d}/{num_epochs} starting...")
+        epoch_wall_t0 = time.time()
 
         t0         = time.time()
         train_loss = train_epoch_seq(model, loader, optimizer, weight_decay, device)
@@ -338,12 +355,13 @@ def train_seq_model(
             log_entry.update(val_metrics)
             log_entry["eval_time"] = eval_time
 
-            epoch_end = datetime.now().strftime("%H:%M:%S")
+            epoch_times.append(time.time() - epoch_wall_t0)
+            eta = _eta_str(epoch, num_epochs, epoch_times)
             logger.info(
-                f"[{epoch_end}] Epoch {epoch:3d}/{num_epochs} | "
+                f"Epoch {epoch:3d}/{num_epochs} | "
                 f"Loss: {train_loss:.4f} | NDCG@10: {ndcg10:.4f} | "
                 f"Recall@20: {val_metrics.get('Recall@20', 0):.4f} | "
-                f"Time: {train_time:.1f}s + {eval_time:.1f}s"
+                f"Train: {train_time:.1f}s | Eval: {eval_time:.1f}s{eta}"
             )
 
             if ndcg10 > best_ndcg:
@@ -363,10 +381,11 @@ def train_seq_model(
                                          patience_counter, history)
                     break
         else:
-            epoch_end = datetime.now().strftime("%H:%M:%S")
+            epoch_times.append(time.time() - epoch_wall_t0)
+            eta = _eta_str(epoch, num_epochs, epoch_times)
             logger.info(
-                f"[{epoch_end}] Epoch {epoch:3d}/{num_epochs} | "
-                f"Loss: {train_loss:.4f} | Time: {train_time:.1f}s (no eval)"
+                f"Epoch {epoch:3d}/{num_epochs} | "
+                f"Loss: {train_loss:.4f} | Train: {train_time:.1f}s{eta}"
             )
 
         history.append(log_entry)
