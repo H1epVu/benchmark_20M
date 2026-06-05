@@ -15,6 +15,7 @@ import torch.nn.functional as F
 import numpy as np
 from pathlib import Path
 from typing import Dict, Optional
+from tqdm import tqdm
 
 import sys
 sys.path.insert(0, str(Path(__file__).parent))
@@ -50,7 +51,7 @@ def _eta_str(epoch: int, num_epochs: int, epoch_times: list) -> str:
     return f" | ETA: {_fmt_duration(avg * remaining)}"
 
 
-def train_epoch_seq(model, loader, optimizer, weight_decay, device, scaler=None):
+def train_epoch_seq(model, loader, optimizer, weight_decay, device, scaler=None, epoch=None, num_epochs=None):
     """
     Train one epoch for sequential models (SASRec / BERT4Rec / DuoRec).
     Loader yields (seq_padded, target_item, neg_item) from SequenceDataset.
@@ -61,7 +62,10 @@ def train_epoch_seq(model, loader, optimizer, weight_decay, device, scaler=None)
     n_batches  = 0
     use_amp = scaler is not None
 
-    for sequences, pos_items, neg_items in loader:
+    desc = f"Epoch {epoch:3d}/{num_epochs}" if epoch is not None else "Training"
+    pbar = tqdm(loader, desc=desc, leave=False, dynamic_ncols=True)
+
+    for sequences, pos_items, neg_items in pbar:
         sequences = sequences.to(device, non_blocking=True)
         pos_items = pos_items.to(device, non_blocking=True)
         neg_items = neg_items.to(device, non_blocking=True)
@@ -83,6 +87,7 @@ def train_epoch_seq(model, loader, optimizer, weight_decay, device, scaler=None)
 
         total_loss += loss.item()
         n_batches  += 1
+        pbar.set_postfix(loss=f"{total_loss / n_batches:.4f}")
 
     return total_loss / max(n_batches, 1)
 
@@ -355,7 +360,7 @@ def train_seq_model(
         logger.info(f"Epoch {epoch:3d}/{num_epochs} starting...")
 
         t0         = time.time()
-        train_loss = train_epoch_seq(model, loader, optimizer, weight_decay, device, scaler)
+        train_loss = train_epoch_seq(model, loader, optimizer, weight_decay, device, scaler, epoch, num_epochs)
         train_time = time.time() - t0
 
         log_entry = {"epoch": epoch, "train_loss": train_loss, "train_time": train_time}
