@@ -6,6 +6,13 @@ Usage:
   python run_experiment.py --model lightgcn --features none --seed 42
   python run_experiment.py --model lightgcn_sf --features llm_profile --seed 42
   python run_experiment.py --model bpr_mf --features none --seed 42
+
+  # SASRec — Direction 4 ablation
+  python run_experiment.py --model sasrec --features none --injection none --seed 42
+  python run_experiment.py --model sasrec --features llm_prof_mood --injection input --seed 42
+  python run_experiment.py --model sasrec --features llm_prof_mood --injection ffn --seed 42
+  python run_experiment.py --model sasrec --features llm_prof_mood --injection output --seed 42
+  python run_experiment.py --model sasrec --features llm_prof_mood --injection all --seed 42
 """
 
 import sys
@@ -29,7 +36,10 @@ from models.xsimgcl import XSimGCL
 from models.simgcl import SimGCL
 from models.lightgcl import LightGCL as LightGCLModel
 from models.kar import KAR
-from train import train_model
+from models.sasrec import SASRec
+from train import train_model, train_seq_model
+
+SEQ_MODELS = {"sasrec"}
 
 
 logging.basicConfig(
@@ -52,6 +62,7 @@ def build_model(
     n_items: int,
     feature_dim: int = 0,
     norm_adj=None,
+    injection_mode: str = "none",
 ):
     """Instantiate model by name."""
     if model_name == "bpr_mf":
@@ -103,19 +114,33 @@ def build_model(
             model.set_adj(norm_adj)
         return model
 
+    elif model_name == "sasrec":
+        return SASRec(
+            n_users, n_items,
+            embed_dim=EMBED_DIM,
+            feature_dim=feature_dim,
+            injection_mode=injection_mode,
+        )
+
     else:
         raise ValueError(f"Unknown model: {model_name}")
 
 
 def main():
     parser = argparse.ArgumentParser()
-    parser.add_argument("--model", type=str, required=True, choices=["bpr_mf", "lightgcn", "lightgcn_sf", "xsimgcl", "simgcl", "lightgcl", "kar"])
-    parser.add_argument("--features", type=str, default="none", choices=list(FEATURE_CONFIGS.keys()))
-    parser.add_argument("--seed", type=int, default=42)
-    parser.add_argument("--lr", type=float, default=LEARNING_RATE)
-    parser.add_argument("--wd", type=float, default=WEIGHT_DECAY)
-    parser.add_argument("--epochs", type=int, default=NUM_EPOCHS)
-    parser.add_argument("--device", type=str, default="auto")
+    parser.add_argument("--model", type=str, required=True,
+                        choices=["bpr_mf", "lightgcn", "lightgcn_sf", "xsimgcl", "simgcl", "lightgcl", "kar", "sasrec"])
+    parser.add_argument("--features",  type=str, default="none", choices=list(FEATURE_CONFIGS.keys()))
+    parser.add_argument("--injection", type=str, default="none",
+                        choices=["none", "input", "ffn", "output", "input+ffn", "input+output", "ffn+output", "all"],
+                        help="Injection mode for SASRec (ignored for other models)")
+    parser.add_argument("--seed",      type=int, default=42)
+    parser.add_argument("--lr",        type=float, default=LEARNING_RATE)
+    parser.add_argument("--wd",        type=float, default=WEIGHT_DECAY)
+    parser.add_argument("--epochs",    type=int, default=NUM_EPOCHS)
+    parser.add_argument("--seq-batch-size", type=int, default=512,
+                        help="Batch size for sequential models (tune to fit VRAM)")
+    parser.add_argument("--device",    type=str, default="auto")
     args = parser.parse_args()
 
     # Device
@@ -129,7 +154,10 @@ def main():
     else:
         device = args.device
 
-    experiment_name = f"{args.model}__{args.features}__seed{args.seed}"
+    if args.model in SEQ_MODELS:
+        experiment_name = f"{args.model}__{args.injection}__{args.features}__seed{args.seed}"
+    else:
+        experiment_name = f"{args.model}__{args.features}__seed{args.seed}"
     logger.info(f"═══ Experiment: {experiment_name} ═══")
     logger.info(f"Device: {device}")
 
@@ -152,23 +180,45 @@ def main():
         norm_adj = data.get_norm_adj().to(device)
 
     # Build model
-    model = build_model(args.model, data.n_users, data.n_items, feature_dim, norm_adj)
+    model = build_model(
+        args.model, data.n_users, data.n_items,
+        feature_dim=feature_dim,
+        norm_adj=norm_adj,
+        injection_mode=args.injection,
+    )
 
-    # Set features for models that accept side features
+    # Set side features
     if args.model in ("lightgcn_sf", "kar") and feature_names:
         item_features = feature_loader.get_combined_tensor(feature_names, device=device)
         model.set_features(item_features)
 
+    if args.model in SEQ_MODELS and feature_names:
+        item_features = feature_loader.get_combined_tensor(feature_names, device=device)
+        model.set_features(item_features)
+        logger.info(f"Set item features: shape={tuple(item_features.shape)}")
+
     # Train
-    results = train_model(
-        model, data,
-        device=device,
-        lr=args.lr,
-        weight_decay=args.wd,
-        num_epochs=args.epochs,
-        patience=PATIENCE,
-        experiment_name=experiment_name,
-    )
+    if args.model in SEQ_MODELS:
+        results = train_seq_model(
+            model, data,
+            device=device,
+            lr=args.lr,
+            weight_decay=args.wd,
+            num_epochs=args.epochs,
+            patience=PATIENCE,
+            experiment_name=experiment_name,
+            batch_size=args.seq_batch_size,
+        )
+    else:
+        results = train_model(
+            model, data,
+            device=device,
+            lr=args.lr,
+            weight_decay=args.wd,
+            num_epochs=args.epochs,
+            patience=PATIENCE,
+            experiment_name=experiment_name,
+        )
 
     logger.info(f"═══ Done: {experiment_name} ═══")
     return results

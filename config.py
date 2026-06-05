@@ -66,6 +66,10 @@ NUM_EPOCHS = 100
 PATIENCE = 20                  # early stopping patience (epochs without val improvement)
 NUM_NEGATIVES = 1              # negatives per positive for BPR
 
+# Sequential model hyperparameters (SASRec / BERT4Rec / DuoRec)
+MAX_SEQ_LEN    = 50            # max history length fed to transformer (SASRec paper default)
+SEQ_BATCH_SIZE = 512           # tune up to fit VRAM: T4→1024, A100→2048
+
 # Evaluation
 EVAL_BATCH_SIZE = 256          # users per evaluation batch
 TOP_K = [10, 20, 50]         # K values for NDCG@K, Recall@K, HR@K
@@ -73,7 +77,7 @@ TOP_K = [10, 20, 50]         # K values for NDCG@K, Recall@K, HR@K
 # EXPERIMENT CONFIGS
 # ──────────────────────────────────────────────────────────────────────────────
 NUM_SEEDS = 5
-SEEDS = [12, 42, 123, 456, 789, 2026, 12]
+SEEDS = [42, 123, 456, 789, 2026]
 
 # Hyperparameter search grid (for tuning)
 HP_GRID = {
